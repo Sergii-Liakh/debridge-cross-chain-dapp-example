@@ -8,8 +8,9 @@ import "dotenv/config";
 import { HardhatUserConfig } from "hardhat/config";
 
 import "./src/tasks/deployment";
+import "./src/tasks/deployment-token";
 
-const accounts = process.env.DEPLOYER ? [`${process.env.DEPLOYER}`] : [];
+const accounts = process.env.PRIVATE_KEY ? [`${process.env.PRIVATE_KEY}`] : [];
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -29,22 +30,31 @@ const config: HardhatUserConfig = {
     hardhat: {
       allowUnlimitedContractSize: true,
     },
+    matic: {
+      url: "https://rpc-mumbai.maticvigil.com/",
+      accounts: accounts,
+      timeout: 60000,
+    },
+    arbitrum: {
+      url: "https://rinkeby.arbitrum.io/rpc",
+      accounts: accounts,
+      timeout: 60000,
+    },
+    binance: {
+      url: "https://data-seed-prebsc-1-s1.binance.org:8545",
+      accounts: accounts,
+      timeout: 60000,
+    },
     polygon: {
-      chainId: 137,
-      url: process.env.RPC_POLYGON || "https://polygon-rpc.com/",
-      accounts,
-      // gasPrice: 50e9,
+      url: "https://polygon-rpc.com",
+      accounts: accounts,
+      timeout: 60000,
     },
-    bnb: {
-      chainId: 56,
-      url: process.env.RPC_BNB || "https://bsc-dataseed.binance.org",
-      accounts,
-    },
-    avalanche: {
-      chainId: 43114,
-      url: process.env.RPC_AVALANCHE || "https://api.avax.network/ext/bc/C/rpc",
-      accounts,
-    },
+    opera: {
+      url: "https://rpc.ftm.tools/",
+      accounts: accounts,
+      timeout: 60000,
+    }
   },
   etherscan: {
     apiKey: {
@@ -52,6 +62,7 @@ const config: HardhatUserConfig = {
       arbitrumOne: `${process.env.ETHERSCAN_ARBITRUMONE_API_KEY}`,
       bsc: `${process.env.ETHERSCAN_BSC_API_KEY}`,
       avalanche: `${process.env.ETHERSCAN_AVAX_API_KEY}`,
+      opera: `${process.env.ETHERSCAN_OPERA_API_KEY}`
     },
   },
 };

@@ -33,4 +33,7 @@ interface ICrossChainCounter {
     /// @dev _initiator we would like to track who called the Incrementor contract
     function receiveIncrementCommand(uint8 _amount, address _initiator)
         external;
+
+    function receiveReadCommand()
+        external;
 }

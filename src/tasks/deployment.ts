@@ -1,6 +1,6 @@
 import { DeBridgeGate__factory } from "@debridge-finance/hardhat-debridge/dist/typechain";
 import chalk from "chalk";
-import { BigNumber } from "ethers";
+import { BigNumber, utils } from "ethers";
 import { task } from "hardhat/config";
 
 import {
@@ -159,6 +159,18 @@ task(
     );
     await tx2.wait();
 
+    const tx3 = await counter.addIncrementor(
+      args.incrementorChainId,
+      args.incrementorAddress
+    );
+    await tx3.wait();
+
+    // const tx4 = await signer.sendTransaction({
+    //   to: args.counterAddress,
+    //   value: utils.parseEther("2"), 
+    // });
+    // await tx4.wait();
+
     console.log(
       `${chalk.green(
         "CrossChainCounter"
@@ -171,6 +183,31 @@ task(
       )} to initiate your first cross-chain transaction!`
     );
   });
+
+  task(
+    "topup-counter",
+    "Adds asset to CrossChainCounter"
+  )
+    .addParam(
+      "counterAddress",
+      "Address of the CrossChainCounter on the current chain"
+    )
+    .addParam(
+      "amount",
+      "Address of the CrossChainIncrementor on the given chain"
+    )
+    .setAction(async (args, hre) => {
+      const [signer] = await hre.ethers.getSigners();
+  
+      const tx4 = await signer.sendTransaction({
+        to: args.counterAddress,
+        value: args.amount, 
+      });
+      await tx4.wait();
+  
+      console.log("Success!");
+
+    });
 
 task(
   "send-increment",
@@ -202,7 +239,7 @@ task(
       await incrementor.deBridgeGate(),
       signer
     );
-
+      console.log('gate', await incrementor.deBridgeGate());
     const protocolFee = await gate.globalFixedNativeFee();
     const value = protocolFee.add(BigNumber.from(args.executionFeeAmount));
     console.log({value, protocolFee, fee: args.executionFeeAmount})
@@ -251,3 +288,80 @@ task(
       chalk.green(currentValue.toString())
     );
   });
+
+  task(
+    "read-remote",
+    "Prints the current state value of the given CrossChainCounter"
+  )
+    .addParam(
+      "incrementorAddress",
+      "The address of the CrossChainCounter on the current chain"
+    )
+    .addOptionalParam(
+      "executionFeeAmount",
+      "Amount of ethers to bridge along with the message to incetivize a third party to execute a transaction on the destination chain",
+      "0"
+    )
+    .setAction(async (args, hre) => {
+      const [signer] = await hre.ethers.getSigners();
+
+    const incrementor = CrossChainIncrementor__factory.connect(
+      args.incrementorAddress,
+      signer
+    );
+
+    const gate = DeBridgeGate__factory.connect(
+      await incrementor.deBridgeGate(),
+      signer
+    );
+
+    const protocolFee = await gate.globalFixedNativeFee();
+    const value = protocolFee.add(BigNumber.from(args.executionFeeAmount));
+    console.log({value, protocolFee, fee: args.executionFeeAmount})
+    const tx = await incrementor.queryRemoteValue(
+      BigNumber.from(args.executionFeeAmount),
+      {
+        value,
+      }
+    );
+    const receipt = await tx.wait();
+
+    console.log(
+      `Tx has been included in the blockchain: ${chalk.red(
+        receipt.transactionHash
+      )}`
+    );
+    console.log("Looking for deBridgeGate submission id...");
+    });
+
+
+    task(
+      "test-counter",
+      "Test CrossChainCounter"
+    )
+      .addParam(
+        "counterAddress",
+        "Address of the CrossChainCounter on the current chain"
+      )
+
+      .setAction(async (args, hre) => {
+        const [signer] = await hre.ethers.getSigners();
+        const counter = CrossChainCounter__factory.connect(
+          args.counterAddress,
+          signer
+        );
+  
+        const gate = DeBridgeGate__factory.connect(
+          await counter.deBridgeGate(),
+          signer
+        );
+        const protocolFee = await gate.globalFixedNativeFee();
+        console.log('protocolFee', protocolFee.toString());
+    
+        const tx2 = await counter.receiveReadCommand({value: protocolFee});
+        await tx2.wait();
+    
+    
+        console.log('Success');
+
+      });

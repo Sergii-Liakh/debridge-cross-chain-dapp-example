@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@debridge-finance/debridge-protocol-evm-interfaces/contracts/libraries/Flags.sol";
 import "@debridge-finance/debridge-protocol-evm-interfaces/contracts/interfaces/IDeBridgeGateExtended.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "./interfaces/ICrossChainToken.sol";
 
-import "./interfaces/ICrossChainCounter.sol";
-import "./interfaces/ICrossChainIncrementor.sol";
-
-contract CrossChainIncrementor is AccessControl, ICrossChainIncrementor {
+contract CrossChainToken is AccessControl, ERC20, ICrossChainToken {
+    event TokenRecieved(uint256 amount);
     /// @dev DeBridgeGate's address on the current chain
     IDeBridgeGateExtended public deBridgeGate;
 
     /// @dev Chain ID where the cross-chain counter contract has been deployed
-    uint256 crossChainCounterResidenceChainID;
+    uint256 remoteChainID;
 
-    /// @dev Address of the cross-chain counter contract (on the `crossChainCounterResidenceChainID` chain)
-    address crossChainCounterResidenceAddress;
+    /// @dev Address of the cross-chain counter contract (on the `remoteChainID` chain)
+    address remoteAddress;
 
     error AdminBadRole();
 
@@ -29,8 +30,14 @@ contract CrossChainIncrementor is AccessControl, ICrossChainIncrementor {
 
     /* ========== INITIALIZERS ========== */
 
-    constructor() {
+    constructor(
+        string memory _name,
+        string memory _symbol,
+        address _deBridgeGate
+    ) ERC20(_name, _symbol) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _mint(msg.sender, 1000);
+        deBridgeGate = IDeBridgeGateExtended(_deBridgeGate);
     }
 
     /* ========== MAINTENANCE METHODS ========== */
@@ -42,58 +49,47 @@ contract CrossChainIncrementor is AccessControl, ICrossChainIncrementor {
         deBridgeGate = deBridgeGate_;
     }
 
-    function addCounter(
-        uint256 crossChainCounterResidenceChainID_,
-        address crossChainCounterResidenceAddress_
+    function addRemote(
+        uint256 remoteChainID_,
+        address remoteAddress_
     ) external onlyAdmin {
-        crossChainCounterResidenceChainID = crossChainCounterResidenceChainID_;
-        crossChainCounterResidenceAddress = crossChainCounterResidenceAddress_;
+        remoteChainID = remoteChainID_;
+        remoteAddress = remoteAddress_;
+    }
+
+    function giveMe(uint256 amount) external {
+        _mint(msg.sender, amount);
     }
 
     /* ========== PUBLIC METHODS: SENDING ========== */
 
-    function increment(uint8 _amount) external payable {
-        bytes memory dstTxCall = _encodeReceiveCommand(_amount, msg.sender);
-
-        _send(dstTxCall, 0);
-    }
-
-    function incrementWithIncludedGas(uint8 _amount, uint256 _executionFee)
+    function sendRemote(uint256 _amount, uint256 _executionFee)
         external
         payable
     {
+        _burn(msg.sender, _amount);
         bytes memory dstTxCall = _encodeReceiveCommand(_amount, msg.sender);
 
         _send(dstTxCall, _executionFee);
     }
 
-    function queryRemoteValue(uint256 _executionFee)
-        external
-        payable
-    {
-        bytes memory dstTxCall = abi.encodeWithSelector(
-                ICrossChainCounter.receiveReadCommand.selector
-            );
-
-        _send(dstTxCall, _executionFee);
-    }
-
-    function receiveReadCommand(uint8 _amount) external override {
-        emit ValueRead(_amount);
+    function recieveRemote(uint256 _amount, address _to) public override {
+        _mint(_to, _amount);
+        emit TokenRecieved(_amount);
     }
 
     /* ========== INTERNAL METHODS ========== */
 
-    function _encodeReceiveCommand(uint8 _amount, address _initiator)
+    function _encodeReceiveCommand(uint256 _amount, address _to)
         internal
         pure
         returns (bytes memory)
     {
         return
             abi.encodeWithSelector(
-                ICrossChainCounter.receiveIncrementCommand.selector,
+                ICrossChainToken.recieveRemote.selector,
                 _amount,
-                _initiator
+                _to
             );
     }
 
@@ -143,15 +139,19 @@ contract CrossChainIncrementor is AccessControl, ICrossChainIncrementor {
         autoParams.data = _dstTransactionCall;
         autoParams.fallbackAddress = abi.encodePacked(msg.sender);
 
-        deBridgeGate.send{value: msg.value}(
-            address(0), // _tokenAddress
-            amountToBridge, // _amount
-            crossChainCounterResidenceChainID, // _chainIdTo
-            abi.encodePacked(crossChainCounterResidenceAddress), // _receiver
-            "", // _permit
-            true, // _useAssetFee
-            0, // _referralCode
-            abi.encode(autoParams) // _autoParams
-        );
+        try 
+            deBridgeGate.send{value: msg.value}(
+                address(0), // _tokenAddress
+                amountToBridge, // _amount
+                remoteChainID, // _chainIdTo
+                abi.encodePacked(remoteAddress), // _receiver
+                "", // _permit
+                true, // _useAssetFee
+                0, // _referralCode
+                abi.encode(autoParams) // _autoParams
+        ) {} catch Error(string memory err) {
+            revert(err);
+        } 
+            
     }
 }
